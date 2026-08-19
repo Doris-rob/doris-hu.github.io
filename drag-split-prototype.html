@@ -1,0 +1,1635 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>拖动多分屏中线 · 交互原型</title>
+  <style>
+    :root {
+      --bg: #f2f3f5;
+      --ink: #161616;
+      --muted: #73767c;
+      --line: #e4e6e8;
+      --device: #595959;
+      --gutter: #333;
+      --blue: #bfefff;
+      --pink: #ffd1d2;
+      --yellow: #fff7bf;
+      --handle: #d9d9d9;
+      --accent: #2f6bff;
+      --danger: #e6474f;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      overflow: hidden;
+    }
+
+    button { font: inherit; }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-rows: 72px minmax(0, 1fr);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 0 28px;
+      background: rgba(255, 255, 255, .88);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+      position: relative;
+      z-index: 20;
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: var(--ink);
+      display: grid;
+      grid-template-columns: repeat(3, 4px);
+      place-content: center;
+      gap: 3px;
+    }
+
+    .brand-mark span { width: 4px; border-radius: 4px; background: white; }
+    .brand-mark span:nth-child(1) { height: 10px; }
+    .brand-mark span:nth-child(2) { height: 16px; }
+    .brand-mark span:nth-child(3) { height: 7px; }
+
+    h1 {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.2;
+      letter-spacing: -.01em;
+    }
+
+    .subtitle { margin-top: 3px; font-size: 12px; color: var(--muted); }
+
+    .segmented {
+      display: flex;
+      align-items: center;
+      padding: 3px;
+      border-radius: 12px;
+      background: #eceef0;
+      gap: 2px;
+    }
+
+    .segmented button {
+      height: 34px;
+      padding: 0 14px;
+      color: #5e6268;
+      background: transparent;
+      border: 0;
+      border-radius: 9px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: color .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+
+    .segmented button.active {
+      color: var(--ink);
+      background: white;
+      box-shadow: 0 1px 3px rgba(0,0,0,.09);
+    }
+
+    .workspace {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      position: relative;
+    }
+
+    .stage {
+      min-width: 0;
+      min-height: 0;
+      position: relative;
+      display: grid;
+      place-items: center;
+      padding: 36px;
+      background-color: #e9eaec;
+      background-image: radial-gradient(#cfd2d6 1px, transparent 1px);
+      background-size: 18px 18px;
+      overflow: hidden;
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 45%, rgba(255,255,255,.95) 0, rgba(255,255,255,.45) 32%, transparent 64%);
+      pointer-events: none;
+    }
+
+    .device-shell {
+      position: relative;
+      z-index: 1;
+      container-type: size;
+      filter: drop-shadow(0 24px 34px rgba(0,0,0,.18));
+      transition: width .34s cubic-bezier(.2,.8,.2,1), height .34s cubic-bezier(.2,.8,.2,1);
+      touch-action: none;
+      user-select: none;
+    }
+
+    .device {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--window-radius);
+      background: var(--gutter);
+    }
+
+    .device::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 15;
+      border: var(--frame-border) solid var(--device);
+      border-radius: var(--window-radius);
+      pointer-events: none;
+    }
+
+    .device-shell.portrait {
+      --window-radius: 8.888889cqw;
+      --frame-border: 1.666667cqw;
+      --gap-x: 2.222222cqw;
+      --half-gap-x: 1.111111cqw;
+      --gap-y: 1cqh;
+      --half-gap-y: .5cqh;
+      width: min(360px, calc((100vh - 164px) * .45));
+      aspect-ratio: 360 / 800;
+    }
+
+    .device-shell.landscape {
+      --window-radius: 8.888889cqh;
+      --frame-border: 1.666667cqh;
+      --gap-x: 1cqw;
+      --half-gap-x: .5cqw;
+      --gap-y: 2.222222cqh;
+      --half-gap-y: 1.111111cqh;
+      width: min(800px, calc(100vw - 436px));
+      aspect-ratio: 800 / 360;
+    }
+
+    .device-content { position: absolute; inset: 0; overflow: hidden; }
+
+    .pane {
+      position: absolute;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      padding: 0;
+      border-radius: var(--window-radius);
+      color: rgba(0,0,0,.52);
+      transition: left .32s cubic-bezier(.2,.8,.2,1), top .32s cubic-bezier(.2,.8,.2,1),
+                  width .32s cubic-bezier(.2,.8,.2,1), height .32s cubic-bezier(.2,.8,.2,1),
+                  opacity .2s ease;
+    }
+
+    .dragging .pane { transition: none; }
+    .pane.blue { background: var(--blue); }
+    .pane.pink { background: var(--pink); }
+    .pane.yellow { background: var(--yellow); }
+
+    .pane-menu {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      display: block;
+      width: 26px;
+      height: 20px;
+      transform: translateX(-50%);
+      opacity: 1;
+    }
+
+    .pane-menu i {
+      position: absolute;
+      bottom: 0;
+      width: 5px;
+      height: 5px;
+      background: #d9d9d9;
+      border-radius: 50%;
+    }
+
+    .pane-menu i:nth-child(1) { left: 0; }
+    .pane-menu i:nth-child(2) { left: 10px; }
+    .pane-menu i:nth-child(3) { left: 20px; }
+
+    .device.focus-mode .pane:not(.is-focus) .pane-menu { display: none; }
+
+    .divider {
+      position: absolute;
+      z-index: 8;
+      display: grid;
+      place-items: center;
+      outline: none;
+      transition: left .32s cubic-bezier(.2,.8,.2,1), top .32s cubic-bezier(.2,.8,.2,1),
+                  opacity .2s ease;
+      pointer-events: none;
+    }
+
+    .divider::before {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      background: transparent;
+      transition: background .16s ease;
+    }
+
+    .divider:hover::before,
+    .divider:focus-visible::before,
+    .divider.active::before { background: rgba(47,107,255,.12); }
+    .dragging .divider { transition: none; }
+    .device.interaction-locked .divider {
+      pointer-events: none !important;
+    }
+
+    .divider.horizontal { height: 28px; left: 0; right: 0; cursor: row-resize; transform: translateY(-50%); }
+    .divider.horizontal::before { inset: 3px 12px; }
+    .divider.vertical { width: 28px; top: 0; bottom: 0; cursor: col-resize; transform: translateX(-50%); }
+    .divider.vertical::before { inset: 12px 3px; }
+
+    .handle {
+      background: var(--handle);
+      border-radius: 3px;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.02);
+      transition: transform .16s ease, background .16s ease;
+      pointer-events: auto;
+      cursor: inherit;
+    }
+
+    .portrait .horizontal .handle { width: 13.333333cqw; height: .5cqh; }
+    .portrait .vertical .handle { width: 1.111111cqw; height: 6cqh; }
+    .landscape .horizontal .handle { width: 6cqw; height: 1.111111cqh; }
+    .landscape .vertical .handle { width: .5cqw; height: 13.333333cqh; }
+
+    .hotzones {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .device.dragging[data-hot-axis="x"] .hotzones-x,
+    .device.dragging[data-hot-axis="short-x"] .hotzones-short-x,
+    .device.dragging[data-hot-axis="short-y"] .hotzones-short-y,
+    .device.dragging[data-hot-axis="y-behavior"] .hotzones-y,
+    .device.dragging[data-hot-axis="columns"] .hotzones-columns { opacity: 1; }
+
+    .hotzone {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      color: #d92f39;
+      background: rgba(230, 71, 79, .13);
+      border-color: rgba(230, 71, 79, .78);
+      font-size: clamp(8px, 1.2vw, 11px);
+      font-weight: 700;
+      letter-spacing: .03em;
+      white-space: nowrap;
+    }
+
+    .hotzones-x {
+      display: flex;
+      color: rgba(30, 24, 24, .68);
+      font-size: clamp(8px, 1.2vw, 11px);
+      font-weight: 800;
+    }
+
+    .behavior-x-zone {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      height: 100%;
+      overflow: hidden;
+      border-right: 1px dashed rgba(68, 60, 60, .42);
+      text-align: center;
+      transition: filter .1s ease, box-shadow .1s ease;
+    }
+
+    .behavior-x-zone strong {
+      font-size: clamp(15px, 4.5cqw, 26px);
+      line-height: 1;
+      opacity: .66;
+    }
+
+    .behavior-x-zone.zone-d { width: 7%; color: #a62a1d; background: rgba(255, 111, 74, .50); }
+    .behavior-x-zone.zone-c { width: 13.166667%; background: rgba(255, 68, 190, .37); }
+    .behavior-x-zone.zone-b-left { width: 13.166667%; background: rgba(82, 82, 82, .42); }
+    .behavior-x-zone.zone-a { width: 33.333333%; background: rgba(255, 247, 191, .62); }
+    .behavior-x-zone.zone-b-right { width: 13.166667%; background: rgba(82, 82, 82, .42); }
+
+    .behavior-x-zone.active {
+      z-index: 2;
+      filter: saturate(1.45) brightness(1.04);
+      box-shadow: inset 0 0 0 2px rgba(47, 107, 255, .9);
+    }
+
+    .hotzones-y .behavior-zone {
+      position: absolute;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      padding-right: 12px;
+      color: rgba(30, 24, 24, .62);
+      border-bottom: 1px dashed rgba(68, 60, 60, .34);
+      font-size: clamp(8px, 1.2vw, 11px);
+      font-weight: 700;
+      line-height: 1.15;
+      transition: filter .1s ease, box-shadow .1s ease;
+    }
+
+    .behavior-zone strong {
+      font-size: clamp(15px, 4.5cqw, 26px);
+      line-height: 1;
+      opacity: .66;
+    }
+
+    .behavior-zone.zone-d { background: rgba(255, 111, 74, .50); }
+    .behavior-zone.zone-c { background: rgba(255, 68, 190, .37); }
+    .behavior-zone.zone-b { background: rgba(82, 82, 82, .42); }
+    .behavior-zone.zone-a { background: rgba(255, 247, 191, .62); }
+
+    .behavior-zone.active {
+      z-index: 2;
+      filter: saturate(1.45) brightness(1.04);
+      box-shadow: inset 0 0 0 2px rgba(47, 107, 255, .9);
+    }
+
+    .behavior-zone[data-zone="d-top"] { top: 0; height: 7%; }
+    .behavior-zone[data-zone="c-top"] { top: 7%; height: 13.166667%; }
+    .behavior-zone[data-zone="b-top"] { top: 20.166667%; height: 13.166667%; }
+    .behavior-zone[data-zone="a"] { top: 33.333333%; height: 33.333333%; }
+    .behavior-zone[data-zone="b-bottom"] { top: 66.666667%; height: 13.166667%; }
+    .behavior-zone[data-zone="c-bottom"] { top: 79.833334%; height: 13.166667%; }
+    .behavior-zone[data-zone="d-bottom"] { top: 93%; height: 7%; border-bottom: 0; }
+
+    .behavior-zone .zone-copy {
+      max-width: 70%;
+      text-align: right;
+    }
+
+    .hotzones-columns {
+      display: flex;
+      color: rgba(30, 24, 24, .68);
+      font-size: clamp(8px, 1.2vw, 11px);
+      font-weight: 800;
+    }
+
+    .hotzones-short-x {
+      display: flex;
+      color: rgba(30, 24, 24, .68);
+      font-size: clamp(8px, 1.2vw, 11px);
+      font-weight: 800;
+    }
+
+    .hotzones-short-y {
+      display: flex;
+      flex-direction: column;
+      color: rgba(30, 24, 24, .68);
+      font-size: clamp(8px, 1.2vw, 11px);
+      font-weight: 800;
+    }
+
+    .column-zone,
+    .short-x-zone,
+    .short-y-zone {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      height: 100%;
+      border-right: 1px dashed rgba(68, 60, 60, .42);
+      text-align: center;
+      transition: filter .1s ease, box-shadow .1s ease;
+    }
+
+    .column-zone.zone-d {
+      width: 7%;
+      color: #a62a1d;
+      background: rgba(255, 111, 74, .50);
+    }
+
+    .column-zone.zone-rebound {
+      width: 26.333333%;
+      background: rgba(82, 82, 82, .20);
+    }
+
+    .column-zone.zone-follow {
+      width: 33.333333%;
+      background: rgba(255, 247, 191, .62);
+    }
+
+    .short-x-zone.zone-d {
+      width: 16.666667%;
+      color: #a62a1d;
+      background: rgba(255, 111, 74, .50);
+    }
+
+    .short-x-zone.zone-rebound {
+      width: 33.333333%;
+      background: rgba(82, 82, 82, .28);
+    }
+
+    .short-x-zone.zone-follow {
+      width: 0;
+      flex: 0 0 0;
+      z-index: 2;
+      overflow: visible;
+      background: rgba(255, 247, 191, .62);
+    }
+
+    .short-y-zone {
+      width: 100%;
+    }
+
+    .short-y-zone.zone-d {
+      height: 16.666667%;
+      color: #a62a1d;
+      background: rgba(255, 111, 74, .50);
+    }
+
+    .short-y-zone.zone-rebound {
+      height: 33.333333%;
+      background: rgba(82, 82, 82, .28);
+    }
+
+    .short-y-zone.zone-follow {
+      height: 0;
+      flex: 0 0 0;
+      z-index: 2;
+      overflow: visible;
+      background: rgba(255, 247, 191, .62);
+    }
+
+    .column-zone strong,
+    .short-x-zone strong,
+    .short-y-zone strong {
+      font-size: clamp(14px, 3.4cqw, 24px);
+      line-height: 1;
+      opacity: .66;
+    }
+
+    .device.dragging .pane-menu { opacity: 0; }
+
+    .device.dragging .pane::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(20, 24, 31, .14);
+      pointer-events: none;
+    }
+
+    .device.dragging .pane.exit-preview::after {
+      background: rgba(20, 24, 31, .48);
+    }
+
+    .column-zone.active,
+    .short-x-zone.active,
+    .short-y-zone.active {
+      z-index: 2;
+      filter: saturate(1.4) brightness(1.04);
+      box-shadow: inset 0 0 0 2px rgba(47, 107, 255, .9);
+    }
+
+    .toast {
+      position: absolute;
+      z-index: 30;
+      left: 50%;
+      bottom: 26px;
+      transform: translate(-50%, 16px);
+      padding: 9px 13px;
+      border-radius: 10px;
+      color: white;
+      background: rgba(22,22,22,.9);
+      font-size: 12px;
+      max-width: min(84%, 420px);
+      white-space: normal;
+      text-align: center;
+      line-height: 1.45;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    .inspector {
+      min-height: 0;
+      padding: 24px;
+      background: #fff;
+      border-left: 1px solid var(--line);
+      overflow: auto;
+    }
+
+    .inspector h2 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
+    .inspector p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+    .metric {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    .metric:first-of-type { margin-top: 18px; border-top: 1px solid var(--line); }
+    .metric span:last-child { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+    .hint {
+      margin-top: 22px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #f6f7f8;
+    }
+
+    .hint strong { display: block; font-size: 12px; margin-bottom: 6px; }
+    .hint p { margin: 0; font-size: 12px; line-height: 1.55; }
+
+    .reset {
+      width: 100%;
+      height: 38px;
+      margin-top: 16px;
+      border: 1px solid #d9dcdf;
+      border-radius: 10px;
+      background: white;
+      color: #35383c;
+      cursor: pointer;
+    }
+
+    .reset:hover { background: #f7f8f9; }
+
+    @media (max-width: 860px) {
+      .topbar { padding: 0 16px; }
+      .subtitle { display: none; }
+      .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+      .inspector { border-left: 0; border-top: 1px solid var(--line); padding: 14px 18px; }
+      .inspector p, .hint { display: none; }
+      .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+      .metric, .metric:first-of-type { margin: 0; border: 0; padding: 8px 0; }
+      .reset { position: absolute; right: 18px; bottom: 18px; width: 72px; }
+      .device-shell.landscape { width: min(calc(100vw - 42px), calc((100vh - 240px) * 2.222)); }
+      .device-shell.portrait { width: min(310px, calc((100vh - 236px) * .45)); }
+      .stage { padding: 20px; }
+    }
+
+    @media (max-width: 540px) {
+      .app { grid-template-rows: 112px minmax(0, 1fr); }
+      .topbar { align-items: flex-start; flex-direction: column; justify-content: center; gap: 10px; }
+      .segmented { width: 100%; }
+      .segmented button { flex: 1; padding: 0 8px; font-size: 12px; }
+      .device-shell.landscape { width: calc(100vw - 30px); }
+      .inspector { display: none; }
+      .workspace { display: block; }
+      .stage { height: 100%; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div>
+          <h1>拖动多分屏中线</h1>
+          <div class="subtitle">拖动灰色中线，观察尺寸、回弹与焦点模式</div>
+        </div>
+      </div>
+      <nav class="segmented" aria-label="布局选择">
+        <button class="active" data-layout="portrait">上二下一</button>
+        <button data-layout="landscape-split">左二右一</button>
+        <button data-layout="landscape-columns">三列</button>
+      </nav>
+    </header>
+
+    <section class="workspace">
+      <div class="stage">
+        <div class="device-shell portrait" id="deviceShell">
+          <div class="device" id="device">
+            <div class="device-content" id="deviceContent"></div>
+            <div class="hotzones hotzones-x" aria-hidden="true">
+              <div class="behavior-x-zone zone-d" data-x-zone="d-left"><span>退出</span><strong>D</strong></div>
+              <div class="behavior-x-zone zone-c" data-x-zone="c-left"><span>焦点模式</span><strong>C</strong></div>
+              <div class="behavior-x-zone zone-b-left" data-x-zone="b-left"><span>回弹至 W0</span><strong>B</strong></div>
+              <div class="behavior-x-zone zone-a" data-x-zone="a"><span>跟手调整</span><strong>A</strong></div>
+              <div class="behavior-x-zone zone-b-right" data-x-zone="b-right"><span>回弹至 W0</span><strong>B</strong></div>
+              <div class="behavior-x-zone zone-c" data-x-zone="c-right"><span>回弹至 W0</span><strong>C</strong></div>
+              <div class="behavior-x-zone zone-d" data-x-zone="d-right"><span>退出</span><strong>D</strong></div>
+            </div>
+            <div class="hotzones hotzones-y" aria-hidden="true">
+              <div class="behavior-zone zone-d" data-zone="d-top"><span class="zone-copy">退出</span><strong>D</strong></div>
+              <div class="behavior-zone zone-c" data-zone="c-top"><span class="zone-copy">焦点模式</span><strong>C</strong></div>
+              <div class="behavior-zone zone-b" data-zone="b-top"><span class="zone-copy">回弹到 H0</span><strong>B</strong></div>
+              <div class="behavior-zone zone-a" data-zone="a"><span class="zone-copy">跟手调整</span><strong>A</strong></div>
+              <div class="behavior-zone zone-b" data-zone="b-bottom"><span class="zone-copy">回弹至 1/3H</span><strong>B</strong></div>
+              <div class="behavior-zone zone-c" data-zone="c-bottom"><span class="zone-copy">回弹至 1/3H</span><strong>C</strong></div>
+              <div class="behavior-zone zone-d" data-zone="d-bottom"><span class="zone-copy">退出</span><strong>D</strong></div>
+            </div>
+            <div class="hotzones hotzones-short-x" aria-hidden="true">
+              <div class="short-x-zone zone-d" data-short-zone="d-left"><span>退出 1/6W</span><strong>D</strong></div>
+              <div class="short-x-zone zone-rebound" data-short-zone="rebound-left"><span>C+B</span><strong>松手回弹</strong></div>
+              <div class="short-x-zone zone-follow" data-short-zone="a"><span>W0</span><strong>A</strong></div>
+              <div class="short-x-zone zone-rebound" data-short-zone="rebound-right"><span>B+C</span><strong>松手回弹</strong></div>
+              <div class="short-x-zone zone-d" data-short-zone="d-right"><span>退出 1/6W</span><strong>D</strong></div>
+            </div>
+            <div class="hotzones hotzones-short-y" aria-hidden="true">
+              <div class="short-y-zone zone-d" data-short-y-zone="d-top"><span>退出 1/6H</span><strong>D</strong></div>
+              <div class="short-y-zone zone-rebound" data-short-y-zone="rebound-top"><span>C+B</span><strong>松手回弹</strong></div>
+              <div class="short-y-zone zone-follow" data-short-y-zone="a"><span>H0</span><strong>A</strong></div>
+              <div class="short-y-zone zone-rebound" data-short-y-zone="rebound-bottom"><span>B+C</span><strong>松手回弹</strong></div>
+              <div class="short-y-zone zone-d" data-short-y-zone="d-bottom"><span>退出 1/6H</span><strong>D</strong></div>
+            </div>
+            <div class="hotzones hotzones-columns" aria-hidden="true">
+              <div class="column-zone zone-d" data-column-zone="d-left"><span>退出</span><strong>D</strong></div>
+              <div class="column-zone zone-rebound" data-column-zone="rebound-left"><span>C+B</span><strong>松手回弹</strong></div>
+              <div class="column-zone zone-follow" data-column-zone="a"><span>A</span><strong>松手回弹</strong></div>
+              <div class="column-zone zone-rebound" data-column-zone="rebound-right"><span>B+C</span><strong>松手回弹</strong></div>
+              <div class="column-zone zone-d" data-column-zone="d-right"><span>退出</span><strong>D</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="toast" id="toast" role="status"></div>
+      </div>
+
+      <aside class="inspector">
+        <h2 id="modeTitle">上二下一</h2>
+        <p id="modeCopy">长中线支持跟手停留、回弹、条件焦点与退出；短中线松手仅回弹或退出。</p>
+        <div class="metrics">
+          <div class="metric"><span>中线方向</span><span id="metricAxis">X + Y</span></div>
+          <div class="metric"><span>当前比例</span><span id="metricRatio">41%</span></div>
+          <div class="metric"><span>状态</span><span id="metricState">稳定</span></div>
+        </div>
+        <div class="hint">
+          <strong>交互提示</strong>
+          <p id="modeHint">A 区松手停留；B 区回弹；C 区仅在大窗口同时达到最大宽高条件时进入焦点；D 区退出。双击中线按钮或点击下方按钮可重置。</p>
+        </div>
+        <button class="reset" id="resetButton">恢复初始布局</button>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const EDGE = .07;
+      const SHORT_EDGE = 1 / 6;
+      const MIN_SIZE = 1 / 3;
+      const EXIT_RESTORE_MODE_KEY = 'split-prototype-exit-restore-mode';
+      const LAYOUT_MODES = ['portrait', 'landscape-split', 'landscape-columns'];
+      const LONG_ZONES = {
+        topFocusEnd: EDGE + (MIN_SIZE - EDGE) / 2,
+        topReboundEnd: MIN_SIZE,
+        bottomReboundStart: 1 - MIN_SIZE,
+        bottomFocusStart: 1 - EDGE - (MIN_SIZE - EDGE) / 2
+      };
+      const LANDSCAPE_LONG_ZONES = {
+        leftFocusEnd: EDGE + (MIN_SIZE - EDGE) / 2,
+        leftReboundEnd: MIN_SIZE,
+        rightReboundStart: 1 - MIN_SIZE,
+        rightFocusStart: 1 - EDGE - (MIN_SIZE - EDGE) / 2
+      };
+      const content = document.getElementById('deviceContent');
+      const shell = document.getElementById('deviceShell');
+      const device = document.getElementById('device');
+      const toast = document.getElementById('toast');
+      const title = document.getElementById('modeTitle');
+      const copy = document.getElementById('modeCopy');
+      const modeHint = document.getElementById('modeHint');
+      const metricAxis = document.getElementById('metricAxis');
+      const metricRatio = document.getElementById('metricRatio');
+      const metricState = document.getElementById('metricState');
+
+      let mode = 'portrait';
+      try {
+        const restoredMode = sessionStorage.getItem(EXIT_RESTORE_MODE_KEY);
+        if (LAYOUT_MODES.includes(restoredMode)) mode = restoredMode;
+        sessionStorage.removeItem(EXIT_RESTORE_MODE_KEY);
+      } catch (_) {
+        // The prototype still works when storage is unavailable.
+      }
+      let activeDrag = null;
+      let toastTimer = 0;
+      let exitResetTimer = 0;
+      let interactionLocked = false;
+      let state = {};
+
+      const defaults = {
+        portrait: { y: 324/800, x: .5, panels: [true, true, true], focus: false },
+        'landscape-split': { x: .45, y: .5, panels: [true, true, true], focus: false },
+        'landscape-columns': { a: 265/800, b: 534/800, panels: [true, true, true], focus: false }
+      };
+
+      const modes = {
+        portrait: {
+          title: '上二下一',
+          copy: '长中线支持跟手停留、回弹、条件焦点与退出；上方短中线松手仅回弹或退出。',
+          hint: '短中线两侧 D 区各占 1/6W；A+B+C 区松手统一回弹至固定 W0（1/2W），不支持跟手停留或焦点模式。',
+          axis: 'X + Y'
+        },
+        'landscape-split': {
+          title: '左二右一',
+          copy: '长中线支持跟手停留、回弹、条件焦点与退出；左侧短中线松手仅回弹或退出。',
+          hint: '短中线上下 D 区各占 1/6H；A+B+C 区松手统一回弹至固定 H0（1/2H），不支持跟手停留或焦点模式。',
+          axis: 'X + Y'
+        },
+        'landscape-columns': {
+          title: '三列',
+          copy: '两条中线在 A+B+C 区域内松手均回弹至各自 W0，仅各自外侧 D 区退出对应窗口。',
+          hint: '第一条向右、第二条向左最多拖到 1/2W 中线位置，达到中线后不再继续跟手；三列中线不进入焦点模式。',
+          axis: 'Y × 2'
+        }
+      };
+
+      function cloneDefault(nextMode = mode) {
+        state = JSON.parse(JSON.stringify(defaults[nextMode]));
+      }
+
+      function pane(index, color) {
+        const el = document.createElement('section');
+        el.className = `pane ${color}`;
+        el.dataset.pane = index;
+        el.setAttribute('aria-label', `分屏窗口 ${index}`);
+        el.innerHTML = '<span class="pane-menu" aria-hidden="true"><i></i><i></i><i></i></span>';
+        return el;
+      }
+
+      function divider(kind, key, label) {
+        const el = document.createElement('div');
+        el.className = `divider ${kind}`;
+        el.dataset.key = key;
+        el.setAttribute('role', 'separator');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('aria-label', label);
+        el.innerHTML = '<span class="handle"></span>';
+        el.addEventListener('pointerdown', beginDrag);
+        el.addEventListener('dblclick', reset);
+        el.addEventListener('keydown', keyboardResize);
+        return el;
+      }
+
+      function setBox(el, left, top, width, height) {
+        Object.assign(el.style, {
+          left,
+          top,
+          width,
+          height
+        });
+      }
+
+      const beforeGapX = value => `calc(${value * 100}% - var(--half-gap-x))`;
+      const afterGapX = value => `calc(${value * 100}% + var(--half-gap-x))`;
+      const beforeGapY = value => `calc(${value * 100}% - var(--half-gap-y))`;
+      const afterGapY = value => `calc(${value * 100}% + var(--half-gap-y))`;
+      const portraitX = value => `${value / 360 * 100}%`;
+      const portraitY = value => `${value / 800 * 100}%`;
+      const landscapeX = value => `${value / 800 * 100}%`;
+      const landscapeY = value => `${value / 360 * 100}%`;
+
+      function getChildren() {
+        return [...content.children].reduce((acc, el) => {
+          if (el.dataset.pane) acc[`p${el.dataset.pane}`] = el;
+          if (el.dataset.key) acc[el.dataset.key] = el;
+          return acc;
+        }, {});
+      }
+
+      function build() {
+        content.innerHTML = '';
+        content.append(pane(1, mode === 'landscape-columns' ? 'yellow' : 'blue'));
+        content.append(pane(2, 'pink'));
+        content.append(pane(3, mode === 'landscape-columns' ? 'blue' : 'yellow'));
+
+        if (mode === 'portrait') {
+          content.append(divider('horizontal', 'long', '长中线：调整上下区域'));
+          content.append(divider('vertical', 'short', '短中线：调整上方窗口'));
+        } else if (mode === 'landscape-split') {
+          content.append(divider('vertical', 'long', '长中线：调整左右区域'));
+          content.append(divider('horizontal', 'short', '短中线：调整左侧窗口'));
+        } else {
+          content.append(divider('vertical', 'first', '第一条短中线'));
+          content.append(divider('vertical', 'second', '第二条短中线'));
+        }
+        render();
+      }
+
+      function render() {
+        const c = getChildren();
+        if (mode === 'landscape-columns' && state.focus) {
+          state.focus = false;
+          state.a = 265 / 800;
+          state.b = 534 / 800;
+        }
+        const visible = state.panels || [true, true, true];
+        [c.p1, c.p2, c.p3].forEach((el, i) => {
+          if (!el) return;
+          el.style.opacity = visible[i] ? '1' : '0';
+          el.style.pointerEvents = visible[i] ? 'auto' : 'none';
+          el.classList.toggle('is-focus', state.focus === i + 1);
+        });
+        device.classList.toggle('focus-mode', Boolean(state.focus));
+
+        if (state.focus && renderFocus(c)) return;
+        if (renderExitedLayout(c, visible)) return;
+
+        if (mode === 'portrait') {
+          setDividerVisibility(c, ['long', 'short']);
+          const y = state.y;
+          const x = state.x;
+          setBox(c.p1, '0', '0', beforeGapX(x), beforeGapY(y));
+          setBox(c.p2, afterGapX(x), '0', beforeGapX(1 - x), beforeGapY(y));
+          setBox(c.p3, '0', afterGapY(y), '100%', beforeGapY(1 - y));
+          c.long.style.top = `${y * 100}%`;
+          c.short.style.left = `${x * 100}%`;
+          c.short.style.bottom = `calc(${(1-y) * 100}% + var(--half-gap-y))`;
+          metricRatio.textContent = `${Math.round(y * 100)} / ${Math.round((1-y) * 100)}%`;
+        } else if (mode === 'landscape-split') {
+          setDividerVisibility(c, ['long', 'short']);
+          const x = state.x;
+          const y = state.y;
+          setBox(c.p1, '0', '0', beforeGapX(x), beforeGapY(y));
+          setBox(c.p2, '0', afterGapY(y), beforeGapX(x), beforeGapY(1 - y));
+          setBox(c.p3, afterGapX(x), '0', beforeGapX(1 - x), '100%');
+          c.long.style.left = `${x * 100}%`;
+          c.short.style.top = `${y * 100}%`;
+          c.short.style.right = `calc(${(1-x) * 100}% + var(--half-gap-x))`;
+          metricRatio.textContent = `${Math.round(x * 100)} / ${Math.round((1-x) * 100)}%`;
+        } else {
+          setDividerVisibility(c, ['first', 'second']);
+          const a = state.a;
+          const b = state.b;
+          setBox(c.p1, '0', '0', beforeGapX(a), '100%');
+          setBox(c.p2, afterGapX(a), '0', `calc(${(b-a) * 100}% - var(--gap-x))`, '100%');
+          setBox(c.p3, afterGapX(b), '0', beforeGapX(1 - b), '100%');
+          c.first.style.left = `${a * 100}%`;
+          c.second.style.left = `${b * 100}%`;
+          metricRatio.textContent = `${Math.round(a*100)} / ${Math.round((b-a)*100)} / ${Math.round((1-b)*100)}%`;
+        }
+      }
+
+      function renderExitedLayout(c, visible) {
+        if (visible.every(Boolean)) return false;
+
+        if (mode === 'portrait') {
+          const remainingPortraitPanes = [c.p1, c.p2, c.p3].filter((_, index) => visible[index]);
+
+          if (remainingPortraitPanes.length === 1) {
+            setBox(remainingPortraitPanes[0], '0', '0', '100%', '100%');
+            setDividerVisibility(c, []);
+            metricRatio.textContent = '100%';
+            return true;
+          }
+
+          if (remainingPortraitPanes.length === 2) {
+            if (!visible[2] && visible[0] && visible[1]) {
+              // 下方大窗口退出：原左上窗口转为上屏，原右上窗口转为下屏。
+              setBox(c.p1, '0', '0', '100%', portraitY(396));
+              setBox(c.p2, '0', portraitY(404), '100%', portraitY(396));
+              c.long.style.top = '50%';
+              setDividerVisibility(c, ['long']);
+            } else {
+              setBox(remainingPortraitPanes[0], '0', '0', '100%', portraitY(396));
+              setBox(remainingPortraitPanes[1], '0', portraitY(404), '100%', portraitY(396));
+              c.long.style.top = '50%';
+              setDividerVisibility(c, ['long']);
+            }
+            metricRatio.textContent = '50 / 50%';
+            return true;
+          }
+        }
+
+        if (mode === 'landscape-split') {
+          if (!visible[0] && !visible[1]) {
+            setBox(c.p3, '0', '0', '100%', '100%');
+            setDividerVisibility(c, []);
+            metricRatio.textContent = '100%';
+            return true;
+          }
+
+          if (!visible[2]) {
+            if (visible[0] && visible[1]) {
+              // 右侧大窗口退出：原左上窗口转为左屏，原左下窗口转为右屏。
+              setBox(c.p1, '0', '0', landscapeX(396), '100%');
+              setBox(c.p2, landscapeX(404), '0', landscapeX(396), '100%');
+              c.long.style.left = '50%';
+              setDividerVisibility(c, ['long']);
+              metricRatio.textContent = '50 / 50%';
+            } else {
+              const remaining = visible[0] ? c.p1 : c.p2;
+              setBox(remaining, '0', '0', '100%', '100%');
+              setDividerVisibility(c, []);
+              metricRatio.textContent = '100%';
+            }
+            return true;
+          }
+
+          const remainingLeft = visible[0] ? c.p1 : c.p2;
+          setBox(remainingLeft, '0', '0', beforeGapX(state.x), '100%');
+          setBox(c.p3, afterGapX(state.x), '0', beforeGapX(1 - state.x), '100%');
+          c.long.style.left = `${state.x * 100}%`;
+          setDividerVisibility(c, ['long']);
+          metricRatio.textContent = `${Math.round(state.x * 100)} / ${Math.round((1-state.x) * 100)}%`;
+          return true;
+        }
+
+        if (!visible[0] && visible[1] && visible[2]) {
+          // 左侧应用退出：右侧应用保持原三列宽度，中间应用补齐退出区域。
+          const boundary = defaults['landscape-columns'].b;
+          setBox(c.p2, '0', '0', beforeGapX(boundary), '100%');
+          setBox(c.p3, afterGapX(boundary), '0', beforeGapX(1 - boundary), '100%');
+          c.second.style.left = `${boundary * 100}%`;
+          setDividerVisibility(c, ['second']);
+          metricRatio.textContent = `${Math.round(boundary * 100)} / ${Math.round((1-boundary) * 100)}%`;
+          return true;
+        }
+
+        if (visible[0] && visible[1] && !visible[2]) {
+          // 右侧应用退出：左侧应用保持原三列宽度，中间应用补齐退出区域。
+          const boundary = defaults['landscape-columns'].a;
+          setBox(c.p1, '0', '0', beforeGapX(boundary), '100%');
+          setBox(c.p2, afterGapX(boundary), '0', beforeGapX(1 - boundary), '100%');
+          c.first.style.left = `${boundary * 100}%`;
+          setDividerVisibility(c, ['first']);
+          metricRatio.textContent = `${Math.round(boundary * 100)} / ${Math.round((1-boundary) * 100)}%`;
+          return true;
+        }
+
+        const remaining = visible[0] ? c.p1 : visible[1] ? c.p2 : c.p3;
+        setBox(remaining, '0', '0', '100%', '100%');
+        setDividerVisibility(c, []);
+        metricRatio.textContent = '100%';
+        return true;
+      }
+
+      function setDividerVisibility(c, visibleKeys) {
+        ['long', 'short', 'first', 'second'].forEach(key => {
+          const dividerElement = c[key];
+          if (!dividerElement) return;
+          const shown = visibleKeys.includes(key);
+          dividerElement.style.display = shown ? 'grid' : 'none';
+          dividerElement.style.opacity = shown ? '1' : '0';
+          dividerElement.style.pointerEvents = shown ? 'auto' : 'none';
+          dividerElement.setAttribute('aria-hidden', shown ? 'false' : 'true');
+          dividerElement.tabIndex = shown ? 0 : -1;
+        });
+      }
+
+      function renderFocus(c) {
+        const focus = Number(state.focus);
+
+        if (mode === 'portrait') {
+          if (focus === 3) {
+            setBox(c.p1, '0', '0', portraitX(176), portraitY(56));
+            setBox(c.p2, portraitX(184), '0', portraitX(176), portraitY(56));
+            setBox(c.p3, '0', portraitY(64), '100%', portraitY(736));
+            c.long.style.top = portraitY(60);
+            setDividerVisibility(c, ['long']);
+            metricRatio.textContent = '7 / 92%';
+            return true;
+          }
+
+          // Figma 1:1578 defines one canonical portrait focus layout.
+          setBox(c.p1, '0', '0', portraitX(306), portraitY(736));
+          setBox(c.p2, portraitX(314), '0', portraitX(46), portraitY(736));
+          setBox(c.p3, '0', portraitY(744), '100%', portraitY(56));
+          c.short.style.left = portraitX(310);
+          c.short.style.top = '0';
+          c.short.style.bottom = portraitY(64);
+          setDividerVisibility(c, ['short']);
+          metricRatio.textContent = '85 / 13 / 7%';
+          return true;
+        }
+
+        if (mode === 'landscape-split') {
+          if (focus === 3) {
+            // Figma 1:1073: yellow is the focus pane; blue and pink remain
+            // as two 56px thumbnails across the 8px main divider.
+            setBox(c.p1, '0', '0', landscapeX(56), landscapeY(176));
+            setBox(c.p2, '0', landscapeY(184), landscapeX(56), landscapeY(176));
+            setBox(c.p3, landscapeX(64), '0', landscapeX(736), '100%');
+            c.long.style.left = landscapeX(60);
+            setDividerVisibility(c, ['long']);
+            metricRatio.textContent = '7 / 92%';
+            return true;
+          }
+
+          // Landscape focus is the exact transposition of Figma 1:1578.
+          setBox(c.p1, '0', '0', landscapeX(736), landscapeY(306));
+          setBox(c.p2, '0', landscapeY(314), landscapeX(736), landscapeY(46));
+          setBox(c.p3, landscapeX(744), '0', landscapeX(56), '100%');
+          c.short.style.top = landscapeY(310);
+          c.short.style.left = '0';
+          c.short.style.right = landscapeX(64);
+          setDividerVisibility(c, ['short']);
+          metricRatio.textContent = '92 / 13 / 7%';
+          return true;
+        }
+
+        return false;
+      }
+
+      function localPoint(event) {
+        const r = content.getBoundingClientRect();
+        return {
+          x: Math.max(0, Math.min(1, (event.clientX - r.left) / r.width)),
+          y: Math.max(0, Math.min(1, (event.clientY - r.top) / r.height))
+        };
+      }
+
+      function beginDrag(event) {
+        if (interactionLocked) {
+          event.preventDefault();
+          return;
+        }
+        event.preventDefault();
+        const target = event.currentTarget;
+        target.setPointerCapture(event.pointerId);
+        activeDrag = {
+          key: target.dataset.key,
+          target,
+          pointerId: event.pointerId,
+          original: JSON.parse(JSON.stringify(state)),
+          fromFocus: Number(state.focus) || 0,
+          lastZone: null
+        };
+        // 焦点态拖回时先切换为可跟手几何；松手规则仍由 fromFocus 判定。
+        if (activeDrag.fromFocus) state.focus = false;
+        target.classList.add('active');
+        device.dataset.hotAxis = getHotAxis(target.dataset.key);
+        device.classList.add('dragging');
+        metricState.textContent = '拖动中';
+        window.addEventListener('pointermove', moveDrag);
+        window.addEventListener('pointerup', endDrag, { once: true });
+        window.addEventListener('pointercancel', endDrag, { once: true });
+        window.addEventListener('blur', cancelDrag, { once: true });
+      }
+
+      function getHotAxis(key) {
+        if (mode === 'portrait') return key === 'long' ? 'y-behavior' : 'short-x';
+        if (mode === 'landscape-split') return key === 'long' ? 'x' : 'short-y';
+        return 'columns';
+      }
+
+      function classifyLongZone(value) {
+        if (value <= EDGE) return 'd-top';
+        if (value <= LONG_ZONES.topFocusEnd) return 'c-top';
+        if (value <= LONG_ZONES.topReboundEnd) return 'b-top';
+        if (value < LONG_ZONES.bottomReboundStart) return 'a';
+        if (value < LONG_ZONES.bottomFocusStart) return 'b-bottom';
+        if (value < 1 - EDGE) return 'c-bottom';
+        return 'd-bottom';
+      }
+
+      function classifyLandscapeLongZone(value) {
+        if (value <= EDGE) return 'd-left';
+        if (value <= LANDSCAPE_LONG_ZONES.leftFocusEnd) return 'c-left';
+        if (value <= LANDSCAPE_LONG_ZONES.leftReboundEnd) return 'b-left';
+        if (value < LANDSCAPE_LONG_ZONES.rightReboundStart) return 'a';
+        if (value < LANDSCAPE_LONG_ZONES.rightFocusStart) return 'b-right';
+        if (value < 1 - EDGE) return 'c-right';
+        return 'd-right';
+      }
+
+      function setActiveBehaviorZone(zone) {
+        document.querySelectorAll('.behavior-zone').forEach(element => {
+          element.classList.toggle('active', element.dataset.zone === zone);
+        });
+      }
+
+      function clearBehaviorZones() {
+        document.querySelectorAll('.behavior-zone.active').forEach(element => {
+          element.classList.remove('active');
+        });
+        document.querySelectorAll('.column-zone.active').forEach(element => {
+          element.classList.remove('active');
+        });
+        document.querySelectorAll('.short-x-zone.active').forEach(element => {
+          element.classList.remove('active');
+        });
+        document.querySelectorAll('.short-y-zone.active').forEach(element => {
+          element.classList.remove('active');
+        });
+        document.querySelectorAll('.behavior-x-zone.active').forEach(element => {
+          element.classList.remove('active');
+        });
+      }
+
+      function setActiveLandscapeLongZone(zone) {
+        document.querySelectorAll('.behavior-x-zone').forEach(element => {
+          element.classList.toggle('active', element.dataset.xZone === zone);
+        });
+      }
+
+      function setActiveColumnZone(zone) {
+        document.querySelectorAll('.column-zone').forEach(element => {
+          element.classList.toggle('active', element.dataset.columnZone === zone);
+        });
+      }
+
+      function setActiveShortZone(zone) {
+        document.querySelectorAll('.short-x-zone').forEach(element => {
+          element.classList.toggle('active', element.dataset.shortZone === zone);
+        });
+      }
+
+      function setActiveShortYZone(zone) {
+        document.querySelectorAll('.short-y-zone').forEach(element => {
+          element.classList.toggle('active', element.dataset.shortYZone === zone);
+        });
+      }
+
+      function shortZone(value) {
+        if (value <= SHORT_EDGE) return 'd-left';
+        if (value < .5) return 'rebound-left';
+        if (value === .5) return 'a';
+        if (value < 1 - SHORT_EDGE) return 'rebound-right';
+        return 'd-right';
+      }
+
+      function shortYZone(value) {
+        if (value <= SHORT_EDGE) return 'd-top';
+        if (value < .5) return 'rebound-top';
+        if (value === .5) return 'a';
+        if (value < 1 - SHORT_EDGE) return 'rebound-bottom';
+        return 'd-bottom';
+      }
+
+      function columnZone(value) {
+        if (value <= EDGE) return 'd-left';
+        if (value < MIN_SIZE) return 'rebound-left';
+        if (value <= 1 - MIN_SIZE) return 'a';
+        if (value < 1 - EDGE) return 'rebound-right';
+        return 'd-right';
+      }
+
+      function zoneFamily(zone) {
+        if (!zone) return '';
+        if (zone.startsWith('d-')) return 'd';
+        if (zone.startsWith('c-')) return 'c';
+        if (zone.startsWith('b-') || zone.startsWith('rebound-')) return 'b';
+        return 'a';
+      }
+
+      function announceZoneTransition(zone, label) {
+        const previous = activeDrag?.lastZone;
+        const from = zoneFamily(previous);
+        const to = zoneFamily(zone);
+        activeDrag.lastZone = zone;
+        const crossedBC = (from === 'b' && to === 'c') || (from === 'c' && to === 'b');
+        const crossedCD = (from === 'c' && to === 'd') || (from === 'd' && to === 'c') ||
+          (from === 'b' && to === 'd') || (from === 'd' && to === 'b');
+        if (previous && previous !== zone && (crossedBC || crossedCD)) {
+          navigator.vibrate?.(12);
+          notify(label, 900);
+        }
+      }
+
+      function focusBackLabel(zone, axis) {
+        const near = axis === 'y' ? zone.endsWith('top') : zone.endsWith('left');
+        if (zone.startsWith('d-')) return 'D · 松手退出被压缩窗口';
+        if (zone.startsWith('c-') && near) return 'C · 松手保持焦点模式';
+        if ((zone.startsWith('b-') && near)) return `B · 松手退出焦点并吸附至 ${axis === 'y' ? 'H0' : 'W0'}`;
+        if (zone === 'a') return 'A · 松手退出焦点并保持当前位置';
+        return `B+C · 松手退出焦点并回弹至 ${axis === 'y' ? 'H0' : 'W0'}`;
+      }
+
+      function updateExitPreview(zone, key) {
+        const c = getChildren();
+        [c.p1, c.p2, c.p3].forEach(p => p?.classList.remove('exit-preview'));
+        if (!zone?.startsWith('d-')) return;
+        if (mode === 'portrait') {
+          if (key === 'long') (zone === 'd-top' ? [c.p1, c.p2] : [c.p3]).forEach(p => p?.classList.add('exit-preview'));
+          else (zone === 'd-left' ? c.p1 : c.p2)?.classList.add('exit-preview');
+        } else if (mode === 'landscape-split') {
+          if (key === 'long') (zone === 'd-left' ? [c.p1, c.p2] : [c.p3]).forEach(p => p?.classList.add('exit-preview'));
+          else (zone === 'd-top' ? c.p1 : c.p2)?.classList.add('exit-preview');
+        } else {
+          (zone === 'd-left' ? c.p1 : c.p3)?.classList.add('exit-preview');
+        }
+      }
+
+      function clearExitPreview() {
+        document.querySelectorAll('.pane.exit-preview').forEach(p => p.classList.remove('exit-preview'));
+      }
+
+      function behaviorZoneLabel(zone) {
+        if (zone.startsWith('d-')) return 'D · 退出热区';
+        if (zone === 'c-bottom') return 'C · 回弹至 1/3H';
+        if (zone.startsWith('c-')) return 'C · 焦点模式预览';
+        if (zone === 'b-bottom') return 'B · 回弹至 1/3H';
+        if (zone.startsWith('b-')) return 'B · 回弹区';
+        return 'A · 跟手调整';
+      }
+
+      function landscapeLongZoneLabel(zone) {
+        if (zone.startsWith('d-')) return 'D · 退出热区';
+        if (zone === 'c-left') return 'C · 黄色窗口焦点模式预览';
+        if (zone === 'c-right') return 'C · 松手回弹至 W0';
+        if (zone.startsWith('b-')) return 'B · 松手回弹至 W0';
+        return 'A · 跟手调整';
+      }
+
+      function moveDrag(event) {
+        if (!activeDrag) return;
+        const p = localPoint(event);
+        const key = activeDrag.key;
+        let edgeValue = 1;
+
+        if (mode === 'portrait') {
+          if (key === 'long') {
+            state.y = Math.max(.055, Math.min(.945, p.y));
+            edgeValue = Math.min(state.y, 1 - state.y);
+            const zone = classifyLongZone(state.y);
+            setActiveBehaviorZone(zone);
+            const label = activeDrag.fromFocus ? focusBackLabel(zone, 'y') : behaviorZoneLabel(zone);
+            metricState.textContent = label;
+            announceZoneTransition(zone, label);
+            updateExitPreview(zone, key);
+          } else {
+            state.x = Math.max(.035, Math.min(.965, p.x));
+            edgeValue = Math.min(state.x, 1 - state.x);
+            const zone = shortZone(state.x);
+            setActiveShortZone(zone);
+            announceZoneTransition(zone, zone.startsWith('d-') ? '松手退出对应窗口' : 'A+B+C · 松手回弹至 W0');
+            updateExitPreview(zone, key);
+          }
+        } else if (mode === 'landscape-split') {
+          if (key === 'long') {
+            state.x = Math.max(.055, Math.min(.945, p.x));
+            edgeValue = Math.min(state.x, 1 - state.x);
+            const zone = classifyLandscapeLongZone(state.x);
+            setActiveLandscapeLongZone(zone);
+            const label = activeDrag.fromFocus ? focusBackLabel(zone, 'x') : landscapeLongZoneLabel(zone);
+            metricState.textContent = label;
+            announceZoneTransition(zone, label);
+            updateExitPreview(zone, key);
+          } else {
+            state.y = Math.max(.035, Math.min(.965, p.y));
+            edgeValue = Math.min(state.y, 1 - state.y);
+            const zone = shortYZone(state.y);
+            setActiveShortYZone(zone);
+            announceZoneTransition(zone, zone.startsWith('d-') ? '松手退出对应窗口' : 'A+B+C · 松手回弹至 H0');
+            updateExitPreview(zone, key);
+          }
+        } else {
+          if (key === 'first') {
+            state.a = Math.max(.04, Math.min(.5, p.x));
+            edgeValue = state.a;
+            const zone = columnZone(state.a);
+            setActiveColumnZone(zone);
+            announceZoneTransition(zone, zone === 'd-left' ? '松手退出左侧窗口' : '松手回弹至 W0');
+            updateExitPreview(zone, key);
+          } else {
+            state.b = Math.min(.96, Math.max(.5, p.x));
+            edgeValue = 1 - state.b;
+            const zone = columnZone(state.b);
+            setActiveColumnZone(zone);
+            announceZoneTransition(zone, zone === 'd-right' ? '松手退出右侧窗口' : '松手回弹至 W0');
+            updateExitPreview(zone, key);
+          }
+          const currentZone = activeDrag.lastZone;
+          metricState.textContent = currentZone?.startsWith('d-')
+            ? 'D · 退出热区'
+            : 'A+B+C · 松手回弹至 W0';
+        }
+
+        if (key === 'short') {
+          const currentZone = activeDrag.lastZone;
+          metricState.textContent = currentZone?.startsWith('d-')
+            ? 'D · 退出热区'
+            : `A+B+C · 松手回弹至 ${mode === 'portrait' ? 'W0' : 'H0'}`;
+        }
+        render();
+      }
+
+      function enterFocus(targetPane) {
+        if (mode === 'landscape-columns') {
+          state.focus = false;
+          state.a = 265 / 800;
+          state.b = 534 / 800;
+          notify('三列模式松手回弹至 W0');
+          return;
+        }
+
+        state.panels = [true, true, true];
+        state.focus = targetPane === 3 ? 3 : 1;
+
+        if (mode === 'portrait') {
+          state.y = targetPane === 3 ? 60 / 800 : 740 / 800;
+          state.x = targetPane === 3 ? .5 : 310 / 360;
+        } else if (mode === 'landscape-split') {
+          state.x = targetPane === 3 ? 60 / 800 : 740 / 800;
+          state.y = targetPane === 3 ? .5 : 310 / 360;
+        }
+
+        notify('已进入焦点模式');
+      }
+
+      function resolveFocusDrag(fromFocus) {
+        let exited = false;
+        if (mode === 'portrait') {
+          const zone = classifyLongZone(state.y);
+          if (zone === 'd-top') {
+            state.panels = [false, false, true];
+            state.focus = false;
+            exited = true;
+          } else if (zone === 'c-top') {
+            enterFocus(fromFocus);
+          } else if (zone === 'b-top') {
+            state.y = MIN_SIZE;
+            state.focus = false;
+            notify('已退出焦点模式，吸附至最近 H0');
+          } else if (zone === 'a') {
+            state.focus = false;
+            notify('已退出焦点模式并保持当前比例');
+          } else if (zone === 'b-bottom' || zone === 'c-bottom') {
+            state.y = 1 - MIN_SIZE;
+            state.focus = false;
+            notify('已退出焦点模式，回弹至最近 H0');
+          } else {
+            state.panels[2] = false;
+            state.focus = false;
+            exited = true;
+          }
+        } else if (mode === 'landscape-split') {
+          const zone = classifyLandscapeLongZone(state.x);
+          if (zone === 'd-left') {
+            state.panels = [false, false, true];
+            state.focus = false;
+            exited = true;
+          } else if (zone === 'c-left') {
+            enterFocus(fromFocus);
+          } else if (zone === 'b-left') {
+            state.x = MIN_SIZE;
+            state.focus = false;
+            notify('已退出焦点模式，吸附至最近 W0');
+          } else if (zone === 'a') {
+            state.focus = false;
+            notify('已退出焦点模式并保持当前比例');
+          } else if (zone === 'b-right' || zone === 'c-right') {
+            state.x = 1 - MIN_SIZE;
+            state.focus = false;
+            notify('已退出焦点模式，回弹至最近 W0');
+          } else {
+            state.panels[2] = false;
+            state.focus = false;
+            exited = true;
+          }
+        }
+        return exited;
+      }
+
+      function endDrag(event) {
+        if (!activeDrag) return;
+        const { key, target, fromFocus } = activeDrag;
+        const draggedState = JSON.parse(JSON.stringify(state));
+        if (target.hasPointerCapture?.(activeDrag.pointerId)) {
+          target.releasePointerCapture(activeDrag.pointerId);
+        }
+        window.removeEventListener('pointermove', moveDrag);
+        window.removeEventListener('blur', cancelDrag);
+        target.classList.remove('active');
+        device.classList.remove('dragging');
+        delete device.dataset.hotAxis;
+        clearBehaviorZones();
+        clearExitPreview();
+
+        let exited = false;
+        if (fromFocus && key === 'long') {
+          exited = resolveFocusDrag(fromFocus);
+        } else if (mode === 'portrait') {
+          if (key === 'short') {
+            const zone = shortZone(state.x);
+            if (zone === 'd-left') { state.panels[0] = false; state.x = .04; exited = true; }
+            else if (zone === 'd-right') { state.panels[1] = false; state.x = .96; exited = true; }
+            else { state.x = defaults.portrait.x; notify('短中线已回弹至 W0（1/2W）'); }
+            state.focus = false;
+          } else if (state.y <= EDGE) {
+            state.panels[0] = false;
+            state.panels[1] = false;
+            state.y = .035;
+            exited = true;
+          } else if (state.y >= 1 - EDGE) {
+            state.panels[2] = false;
+            state.y = .965;
+            exited = true;
+          } else if (state.y <= LONG_ZONES.topFocusEnd) {
+            enterFocus(3);
+          } else if (state.y <= LONG_ZONES.topReboundEnd) {
+            state.y = MIN_SIZE;
+            state.focus = false;
+            notify('已回弹至 H0 最小高度');
+          } else if (state.y >= LONG_ZONES.bottomReboundStart) {
+            state.y = 1 - MIN_SIZE;
+            state.focus = false;
+            notify('黄色窗口已回弹至 1/3H');
+          } else {
+            state.focus = false;
+          }
+        } else if (mode === 'landscape-split') {
+          if (key === 'short') {
+            const zone = shortYZone(state.y);
+            if (zone === 'd-top') { state.panels[0] = false; state.y = .04; exited = true; }
+            else if (zone === 'd-bottom') { state.panels[1] = false; state.y = .96; exited = true; }
+            else { state.y = defaults['landscape-split'].y; notify('短中线已回弹至 H0（1/2H）'); }
+            state.focus = false;
+          } else if (state.x <= EDGE) {
+            state.panels[0] = false;
+            state.panels[1] = false;
+            state.x = .035;
+            exited = true;
+          } else if (state.x >= 1 - EDGE) {
+            state.panels[2] = false;
+            state.x = .965;
+            exited = true;
+          } else if (state.x <= LANDSCAPE_LONG_ZONES.leftFocusEnd) {
+            enterFocus(3);
+          } else if (state.x <= LANDSCAPE_LONG_ZONES.leftReboundEnd) {
+            state.x = MIN_SIZE;
+            state.focus = false;
+            notify('左侧区域已回弹至 W0');
+          } else if (state.x >= LANDSCAPE_LONG_ZONES.rightReboundStart) {
+            state.x = 1 - MIN_SIZE;
+            state.focus = false;
+            notify('左侧双窗口区域已回弹至 W0');
+          } else {
+            state.focus = false;
+          }
+        } else {
+          const value = key === 'first' ? state.a : state.b;
+          const zone = columnZone(value);
+          if (key === 'first' && zone === 'd-left') {
+            state.panels[0] = false; state.a = 0; exited = true;
+          } else if (key === 'second' && zone === 'd-right') {
+            state.panels[2] = false; state.b = 1; exited = true;
+          } else {
+            if (key === 'first') state.a = defaults['landscape-columns'].a;
+            else state.b = defaults['landscape-columns'].b;
+            state.focus = false;
+            notify(key === 'first'
+              ? '第一条短中线已回弹至 W0'
+              : '第二条短中线已回弹至 W0');
+          }
+        }
+
+        // 先绘制最后一次跟手位置，再在下一帧提交回弹/焦点/退出结果。
+        // 否则 pointermove 与 pointerup 会在同一帧批处理，CSS transition 看不到起点。
+        const settledState = JSON.parse(JSON.stringify(state));
+        activeDrag = null;
+        state = draggedState;
+        metricState.textContent = exited ? '退出中' : '回弹中';
+        render();
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            state = settledState;
+            metricState.textContent = exited ? '窗口已退出' : state.focus ? '焦点模式' : '稳定';
+            render();
+            if (exited) scheduleExitReset();
+          });
+        });
+      }
+
+      function cancelDrag() {
+        if (!activeDrag) return;
+        const { target, original } = activeDrag;
+        state = original;
+        window.removeEventListener('pointermove', moveDrag);
+        window.removeEventListener('pointerup', endDrag);
+        window.removeEventListener('pointercancel', endDrag);
+        target.classList.remove('active');
+        device.classList.remove('dragging');
+        delete device.dataset.hotAxis;
+        clearBehaviorZones();
+        clearExitPreview();
+        activeDrag = null;
+        metricState.textContent = '稳定';
+        render();
+      }
+
+      function keyboardResize(event) {
+        if (interactionLocked) {
+          event.preventDefault();
+          return;
+        }
+        const step = event.shiftKey ? .05 : .01;
+        const key = event.currentTarget.dataset.key;
+        let handled = true;
+        if (mode === 'portrait') {
+          if (key === 'long' && event.key === 'ArrowUp') state.y -= step;
+          else if (key === 'long' && event.key === 'ArrowDown') state.y += step;
+          else if (key === 'short' && event.key === 'ArrowLeft') state.x -= step;
+          else if (key === 'short' && event.key === 'ArrowRight') state.x += step;
+          else handled = false;
+          state.x = Math.max(.07, Math.min(.93, state.x));
+          state.y = Math.max(.07, Math.min(.93, state.y));
+        } else if (mode === 'landscape-split') {
+          if (key === 'long' && event.key === 'ArrowLeft') state.x -= step;
+          else if (key === 'long' && event.key === 'ArrowRight') state.x += step;
+          else if (key === 'short' && event.key === 'ArrowUp') state.y -= step;
+          else if (key === 'short' && event.key === 'ArrowDown') state.y += step;
+          else handled = false;
+          state.x = Math.max(.07, Math.min(.93, state.x));
+          state.y = Math.max(.07, Math.min(.93, state.y));
+        } else {
+          if (key === 'first' && event.key === 'ArrowLeft') state.a -= step;
+          else if (key === 'first' && event.key === 'ArrowRight') state.a += step;
+          else if (key === 'second' && event.key === 'ArrowLeft') state.b -= step;
+          else if (key === 'second' && event.key === 'ArrowRight') state.b += step;
+          else handled = false;
+          state.a = Math.max(.08, Math.min(state.b - .1, state.a));
+          state.b = Math.min(.92, Math.max(state.a + .1, state.b));
+        }
+        if (handled) { event.preventDefault(); metricState.textContent = '键盘调整'; render(); }
+      }
+
+      function notify(message, duration = 1700) {
+        clearTimeout(toastTimer);
+        toast.textContent = message;
+        toast.classList.add('show');
+        toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+      }
+
+      function scheduleExitReset() {
+        const exitMode = mode;
+        interactionLocked = true;
+        device.classList.add('interaction-locked');
+        metricState.textContent = '窗口已退出 · 2s 后恢复';
+        notify('已退出一个窗口，2 秒后恢复初始状态', 2000);
+        try {
+          sessionStorage.setItem(EXIT_RESTORE_MODE_KEY, exitMode);
+        } catch (_) {
+          // Fall back to the default layout if storage is unavailable.
+        }
+        clearTimeout(exitResetTimer);
+        exitResetTimer = setTimeout(() => window.location.reload(), 2000);
+      }
+
+      function reset() {
+        cloneDefault();
+        metricState.textContent = '稳定';
+        notify('已恢复初始布局');
+        render();
+      }
+
+      function switchMode(next) {
+        if (activeDrag) cancelDrag();
+        if (interactionLocked) {
+          clearTimeout(exitResetTimer);
+          interactionLocked = false;
+          device.classList.remove('interaction-locked');
+          try { sessionStorage.removeItem(EXIT_RESTORE_MODE_KEY); } catch (_) {}
+        }
+        mode = next;
+        cloneDefault(mode);
+        shell.classList.toggle('portrait', mode === 'portrait');
+        shell.classList.toggle('landscape', mode !== 'portrait');
+        document.querySelectorAll('[data-layout]').forEach(button => {
+          button.classList.toggle('active', button.dataset.layout === mode);
+        });
+        title.textContent = modes[mode].title;
+        copy.textContent = modes[mode].copy;
+        modeHint.textContent = modes[mode].hint;
+        metricAxis.textContent = modes[mode].axis;
+        metricState.textContent = '稳定';
+        build();
+      }
+
+      document.querySelectorAll('[data-layout]').forEach(button => {
+        button.addEventListener('click', () => switchMode(button.dataset.layout));
+      });
+      document.getElementById('resetButton').addEventListener('click', reset);
+      switchMode(mode);
+    })();
+  </script>
+</body>
+</html>
