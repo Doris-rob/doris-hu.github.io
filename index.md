@@ -78,7 +78,7 @@ description: Doris 的个人网站，记录学习、思考、作品与长期积�
         <p class="section-label">Selected work</p>
         <h2>我的项目</h2>
         <p>从问题、过程到结果，整理值得复盘的实践与作品。</p>
-        <span class="text-link" aria-label="项目栏目正在准备中">正在准备 ↗</span>
+        <a class="text-link" href="{{ '/drag-split-prototype.html' | relative_url }}" aria-label="打开拖动多分屏中线交互原型">拖动多分屏中线 ↗</a>
       </div>
     </article>
 
