@@ -68,7 +68,7 @@ description: Doris 的个人网站，记录学习、思考、作品与长期积�
         <p class="section-label">Learning</p>
         <h2>学习笔记</h2>
         <p>把输入转化成自己的理解，记录概念、方法和仍待回答的问题。</p>
-        <span class="text-link" aria-label="学习笔记栏目正在准备中">正在准备 ↗</span>
+        <a class="text-link" href="{{ '/stravinsky.html' | relative_url }}" aria-label="打开斯特拉文斯基与俄派作曲家音乐体验地图">斯特拉文斯基：秩序的能量 ↗</a>
       </div>
     </article>
 
@@ -96,9 +96,9 @@ description: Doris 的个人网站，记录学习、思考、作品与长期积�
   <section class="now" id="now" aria-labelledby="now-title">
     <p class="section-label reveal">Latest update</p>
     <div class="now__content reveal">
-      <h2 id="now-title">网站正式建立</h2>
-      <time datetime="2026-07-27">2026.07.27</time>
+      <h2 id="now-title">新增：斯特拉文斯基音乐体验地图</h2>
+      <time datetime="2026-10-14">2026.10.14</time>
     </div>
-    <p class="now__note reveal">这是起点。内容会在之后的每一次学习、思考和实践中持续生长。</p>
+    <p class="now__note reveal">从理性坐标、感性听感与机制因果三层，理解斯特拉文斯基及俄派作曲家的音乐语言。</p>
   </section>
 </main>
